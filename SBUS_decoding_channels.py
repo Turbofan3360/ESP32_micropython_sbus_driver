@@ -1,45 +1,36 @@
 from machine import UART
-import time
 
 class SbusReceive:
-    
-    TIMEOUT_PERIODS = 26
-    
     def __init__(self, port):
         self.sbus = UART(port, 100000)
         self.sbus.init(100000, bits=8, parity=0, stop=2, invert=self.sbus.INV_RX)
         
-        self.previousData = bytearray()
-        self.dataDuplicated = False
-            
-    def read_data(self):
+        self.TIMEOUT_PERIODS = 26
+                    
+    def get_data(self):
         timeout_flag = 0
         
-        while timeout_flag < SbusReceive.TIMEOUT_PERIODS:
+        while timeout_flag < self.TIMEOUT_PERIODS:
             timeout_flag += 1
             testbytes = self.sbus.read(2)
             
             if testbytes == b'\x00\x0f':
-                self.data = bytearray()
+                data = bytearray()
                 
                 while len(self.data) < 23:
-                    nextbytes = self.sbus.read(23 - len(self.data))
+                    nextbytes = self.sbus.read(23 - len(data))
                     if nextbytes:
-                        self.data += nextbytes
+                        data += nextbytes
                 
-                if self.data == self.previousData:
-                    self.dataDuplicated = True
-                else:
-                    self.dataDuplicated = False
-                    self.previousData = self.data
+                try:
+                    data_decoded = self._extract_channel_data(data)
+                except:
+                    return None
                 
-                return self.data
+                return data_decoded
         return None
 
-    def extract_channel_data(self):
-        if self.dataDuplicated:
-            return
-        
+    def _extract_channel_data(self, data):
         channels = 16*[0]
         byte_in_sbus = 0
         bit_in_sbus = 0
@@ -47,7 +38,7 @@ class SbusReceive:
         bit_in_channel = 0
         
         for i in range(0, 175):
-            if self.data[byte_in_sbus] & (1 << bit_in_sbus):
+            if data[byte_in_sbus] & (1 << bit_in_sbus):
                 channels[ch] |= (1 << bit_in_channel)            
             
             bit_in_sbus += 1
@@ -98,16 +89,16 @@ class ChannelValues:
         return channels
 
 
-sbus = SbusReceive(1)
-channelvalues = ChannelValues()
-
-while True:
-    data = sbus.read_data()
+if __name__ == "__main__":
+    import time
     
-    if data:
-        channels = sbus.extract_channel_data()
+    sbus = SbusReceive(1)
+    channelvalues = ChannelValues()
+
+    while True:
+        channels = sbus.get_data()
+
         if channels:
-            servo_throttle_angles = channelvalues.get_values(channels)
-            print(servo_throttle_angles)
-    else:
-        time.sleep_ms(5)
+            print(channelvalues.get_values(channels)
+                  
+        time.sleep(1)
