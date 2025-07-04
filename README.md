@@ -3,14 +3,13 @@
 ### The Code: ###
 SBUS is a common R/C serial protocol capable of transmitting up to 18 channels with only a single wire. I am using an ESP-32 to read data off my R8EF receiver - this code, specifically the ChannelValues class, can be modified easily to suit other receivers, however.
 
-Here, I am using UART 1 - here’s a full table of UARTS and their TX/RX pins:
+Here, I am using UART 1 - here’s a full table of UARTS and their TX/RX pins for the ESP32-S3 WROOM I am using:
 
 | *UART No.* | *TX Pin:* | *RX Pin:* |
 |----------|---------|---------|
 |  UART 0  |    1    |    3    |
 |  UART 1  |   10    |    9    |
 |  UART 2  |   17    |   16    |
-|----------|---------|---------|
 
 The SbusReceive class handles all of the UART receiving, and then handles the required bit-shifting to get to the final channel values for the first 16 channels - returned as a list of ints. When initialised, you have to make sure to feed this class the UART TX pin that you are using. Don't forgot to connect up your receiver ground to the ESP32's group as well!
 
