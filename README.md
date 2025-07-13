@@ -11,19 +11,26 @@ Here, I am using UART 1 - here’s a full table of UARTS and their TX/RX pins fo
 |  UART 1  |   10    |    9    |
 |  UART 2  |   17    |   16    |
 
-The SbusReceive class handles all of the UART receiving, and then handles the required bit-shifting to get to the final channel values for the first 16 channels - returned as a list of ints. When initialised, you have to make sure to feed this class the UART TX pin that you are using. Don't forgot to connect up your receiver ground to the ESP32's group as well!
+The SbusReceive class handles all of the UART receiving, and then handles the required bit-shifting to get to the final channel values for the first 16 channels - returned as a list of ints. When initialised, you have to make sure to feed this class the UART TX pin that you are using. Don't forgot to connect up your receiver ground to the ESP32's ground as well!
 
 *Note: I haven't implemented the 17th/18th channels in my SBUS code, as I my receiver doesn't utilise those channels. They are digital channels, and so need to be decoded differently to the others.*
 
-I also integrated the SBUS code with a few PWM channels from the ESP32 as well - so you can use your ESP32 to drive servos (I used SG90 servos) based on the channel data received over SBUS. This has quite a high lag currently - hopefully I will be able to improve that in future! 
+I also integrated the SBUS code with a few PWM channels from the ESP32 as well - so you can use your ESP32 to drive servos (I used SG90 servos) based on the channel data received over SBUS.
 
 ### Implementation: ###
 
-Please see the bottom of each code file for an example of how to implement the driver.
+Please see the bottom of each code file for a more detailed example of how to implement the driver.
 
 ```python3
 if __name__ == "__main__":
-	...
+	sbus = SbusReceive(sbus_pin)
+    	channelvalues = ChannelValues()
+	
+	while True:
+        	data = sbus.read_data()
+        
+        	if data:
+            		print(channelvalues.get_duty_cycles(data))
 ```
 
 ### References: ###
