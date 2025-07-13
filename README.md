@@ -25,7 +25,7 @@ Please see the bottom of each code file for a more detailed example of how to im
 
 ```python3
 if __name__ == "__main__":
-	sbus = SbusReceive(sbus_pin)
+	sbus = SbusReceive(3)
     	channelvalues = ChannelValues()
 	
 	while True:
