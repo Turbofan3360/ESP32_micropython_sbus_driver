@@ -1,48 +1,44 @@
 from machine import UART, Pin
+import time
 
 class SbusReceive:
     def __init__(self, pin):
         self.sbus = UART(1, 100000, rx=pin)
         self.sbus.init(100000, bits=8, parity=0, stop=2, invert=self.sbus.INV_RX)
-        
-        self.TIMEOUT_PERIODS = 26
-        
-    def _get_sync(self):
-        timeout_flag = 0
-        
-        while timeout_flag < self.TIMEOUT_PERIODS:
-            timeout_flag += 1
-            testbytes = self.sbus.read(2)
-            
-            if testbytes == b'\x00\x0f':
-                return True
-        return False
             
     def read_data(self):
             data = bytearray()
-            testbytes = self.sbus.read(2)
             
-            if testbytes != b'\x00\x0f':
-                if not self._get_sync():
-                    return None
+            while self.sbus.any() < 25:
+                time.sleep_us(3) # Length of time it takes to send one SBUS frame
             
-            while len(data) < 23:
-                nextbytes = self.sbus.read(23 - len(data))
+            data = self.sbus.read(25)
+            
+            index = data.find (b'\x00\x0f')
+            while  index == -1:
+                nextbytes = self.sbus.read(25)
+                
                 if nextbytes:
                     data += nextbytes
-
+                    index = data.find (b'\x00\x0f')
+            
+            data = data[index+1:]
+            
+            while len(data) < 25:
+                nextbytes = self.sbus.read(25 - len(data))
+                if nextbytes:
+                    data += nextbytes
             
             data_decoded = self._extract_channel_data(data)
             return data_decoded
-
-    def _extract_channel_data(self, data):
+    
+    @micropython.native
+    def _extract_channel_data(self, frame):
         channels = 16*[0]
-        byte_in_sbus = 0
-        bit_in_sbus = 0
-        ch = 0
-        bit_in_channel = 0
+        byte_in_sbus = bit_in_sbus = ch = bit_in_channel = 0
+        data = frame[1:23]
         
-        for i in range(0, 175):
+        for i in range(0, 176):
             if data[byte_in_sbus] & (1 << bit_in_sbus):
                 channels[ch] |= (1 << bit_in_channel)            
             
@@ -63,35 +59,40 @@ class ChannelValues:
     def __init__(self):
         self.channels_angles = [0, 1, 3]
         self.channels_percentages = [2, 4, 5, 6, 7]
-        
+    
+    @micropython.native
     def _find_duty_cycle(self, angle):
         duty_cycle = (angle/90)+1.5
         duty_cycle *= 51.2
         return int(duty_cycle)
     
+    @micropython.native
     def get_control_values(self, channel_values):
-        aileron_degrees = (channel_values[0]-1000)*(9/1600)
-        elavator_degrees = (channel_values[1]-1000)*(9/1600)
-        rudder_degrees = (channel_values[3]-1000)*(9/160)
+        aileron_degrees = (channel_values[0]-1000)*0.09
+        elavator_degrees = (channel_values[1]-1000)*0.09
+        rudder_degrees = (channel_values[3]-1000)*0.09
         
-        throttle_percent = round((channel_values[2]-200)/16, 2)
+        throttle_percent = int((channel_values[2]-200)/16)
         return aileron_degrees, elavator_degrees, rudder_degrees, throttle_percent
     
+    @micropython.native
     def get_switch_values(self, channel_values):
         ch5 = (channel_values[4]-200)/16
         ch7 = (channel_values[6] -200)/16
         return ch5, ch7
     
+    @micropython.native
     def get_aux_values(self, channel_values):
         aux1 = (channel_values[5]-200)/16
         aux2 = (channel_values[7]-200)/16
         return aux1, aux2
     
+    @micropython.native
     def get_duty_cycles(self, channel_values):
         channels = 8*[0]
         
         for i in self.channels_angles:
-            servo_angle = (channel_values[i]-1000)*(9/160)
+            servo_angle = (channel_values[i]-1000)*0.09
             channels[i] = self._find_duty_cycle(servo_angle)
         
         for i in self.channels_percentages:
@@ -101,7 +102,6 @@ class ChannelValues:
 
 
 if __name__ == "__main__":
-    import time
     from machine import PWM
     
     aileron_pin = 45
@@ -118,12 +118,10 @@ if __name__ == "__main__":
 
     while True:
         data = sbus.read_data()
-    
+        
         if data:
             servo_throttle_angles = channelvalues.get_duty_cycles(data)
             
             aileron.duty(servo_throttle_angles[0])
             elavator.duty(servo_throttle_angles[1])
             rudder.duty(servo_throttle_angles[3])
-        else:
-            time.sleep_ms(5)
