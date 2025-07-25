@@ -3,34 +3,54 @@ import time
 
 class SbusReceive:
     def __init__(self, pin):
+        """
+        Micropython SBUS RC Radio protocol receiver for an ESP32.
+        
+        This driver expects one input parameter - the number of the ESP32 pin that is connected to the signal pin of the radio receiver's SBUS port.
+        Don't forget to connect the radio receiver's ground to the ESP32's ground!
+        
+        Potential methods:
+            read_data() - returns a list of the raw channel values for the first 16 SBUS channels
+        
+        SBUS has the potential to support up to 18 channels, but channels 17 and 18 are digital. They are not supported by this driver
+        """
+        
         self.sbus = UART(1, 100000, rx=pin)
         self.sbus.init(100000, bits=8, parity=0, stop=2, invert=self.sbus.INV_RX)
             
     def read_data(self):
-            data = bytearray()
+        """
+        Method that returns a list of the raw values of the 16 channels encoded in each SBUS packet. Channels 17 and 18 are not supported.
+        
+        Data is returned as a list of integers.
+        
+        No parameters are required.
+        """
+        
+        data = bytearray()
             
-            while self.sbus.any() < 25:
-                time.sleep_us(3) # Length of time it takes to send one SBUS frame
+        while self.sbus.any() < 25:
+            time.sleep_us(3) # Length of time it takes to send one SBUS frame
             
-            data = self.sbus.read(25)
+        data = self.sbus.read(25)
             
-            index = data.find (b'\x00\x0f')
-            while  index == -1:
-                nextbytes = self.sbus.read(25)
+        index = data.find (b'\x00\x0f')
+        while  index == -1:
+            nextbytes = self.sbus.read(25)
                 
-                if nextbytes:
-                    data += nextbytes
-                    index = data.find (b'\x00\x0f')
+            if nextbytes:
+                data += nextbytes
+                index = data.find (b'\x00\x0f')
             
-            data = data[index+1:]
+        data = data[index+1:]
             
-            while len(data) < 25:
-                nextbytes = self.sbus.read(25 - len(data))
-                if nextbytes:
-                    data += nextbytes
+        while len(data) < 25:
+            nextbytes = self.sbus.read(25 - len(data))
+            if nextbytes:
+                data += nextbytes
             
-            data_decoded = self._extract_channel_data(data)
-            return data_decoded
+        data_decoded = self._extract_channel_data(data)
+        return data_decoded
     
     @micropython.native
     def _extract_channel_data(self, frame):
@@ -53,10 +73,24 @@ class SbusReceive:
                 bit_in_channel = 0
                 ch += 1
             
-        return channels[:8]
+        return channels[:16]
 
 class ChannelValues:
     def __init__(self):
+        """
+        Class that decodes the raw SBUS channel values into servo angles (for some channels) and percentages for others.
+        
+        Designed to suit the R8EF receiver and SG90 servos I'm using.
+        
+        Potential methods:
+            get_control_values(sbus_channel_ints) - returns a list of aileron, elevator, rudder angles and throttle percentage
+            get_switch_values(sbus_channel_ints) - returns the values of the switch channels (channels 4 and 6)
+            get_aux_values(sbus_channel_ints) - returns the values of the aux channels (channels 5 and 7)
+            get_duty_cycles(sbus_channel_ints) - returns the PWM duty cycle lengths (to control the SG90 servos) for each channel
+            
+        Required parameter for all these methods is the raw values of the SBUS channels, returned from the SbusReceive class
+        """
+        
         self.channels_angles = [0, 1, 3]
         self.channels_percentages = [2, 4, 5, 6, 7]
     
