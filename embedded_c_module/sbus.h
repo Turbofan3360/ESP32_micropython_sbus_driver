@@ -23,9 +23,8 @@ typedef struct {
 } sbus_obj_t;
 
 // Function definitions
-static const uint8_t* mparray_to_int(mp_obj_t bytearray)
-static int16_t find_in_array(uint8_t *array, uint16_t length, uint8_t value_to_look_for, int16_t starting_point)
-
+static int16_t find_sbus_frame_start(uint8_t *array, uint16_t length);
+static void extract_channel_data(uint8_t* data_frame, uint8_t* output)
 
 extern const mp_obj_type_t sbus_type;
 

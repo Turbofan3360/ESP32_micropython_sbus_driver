@@ -16,10 +16,10 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
 
     // Ensuring UART ID and Pin number are valid - configured for ESP32-S3
     if ((uart_id != 1) && (uart_id != 2)){
-        mp_raise_msg(&mp_type_ValueError("UART ID can only be 1 or 2"));
+        mp_raise_msg(&mp_type_ValueError, MP_ERROR_TEXT("UART ID can only be 1 or 2"));
     }
     if ((uart_pin < 0) || (uart_pin > 45)){
-        mp_raise_msg(&mp_type_ValueError("Only 45 pins on ESP32-S3: Please enter valid pin number"));
+        mp_raise_msg(&mp_type_ValueError, MP_ERROR_TEXT("Only 45 pins on ESP32-S3: Please enter valid pin number"));
     }
 
     if (uart_id == 1){
@@ -53,41 +53,52 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
     return MP_OBJ_FROM_PTR(self);
 }
 
-static const uint8_t* mparray_to_int(mp_obj_t bytearray){
+static int16_t find_sbus_frame_start(uint8_t *array, uint16_t length){
     /**
-     * Converts from a micropython bytearray to array of C ints
-     * I.e. converts from python bytearray to a C array type
-    */
-    mp_buffer_info_t buf_info;
-
-    mp_get_buffer_raise(bytearray, &buf_info, MP_BUFFER_READ);
-
-    const uint8_t *data = (const uint8_t *)buf_info.buf;
-
-    return data;
-}
-
-static int16_t find_in_array(uint8_t *array, uint16_t length, uint8_t value_to_look_for, int16_t starting_point){
-    /**
-     * Utility to find the index of a specific value in an array
+     * Utility to find the index of the start of the SBUS data frame
      * Basically, a C implementation of .find() in python
-     * Returns the index of the character, or -1 if it's not found
+     * Returns the index of the start, or -1 if it's not found
     */
     uint16_t i;
 
-    // Making sure the starting point is valid - some cases mean that starting_point might be passed in as -1
-    if (starting_point < 0){
-        starting_point = 0;
-    }
-
-    // Utility to search through an array for a specific value and return the index
-    for (i = starting_point; i < length; i++){
-        if (array[i] == value_to_look_for){
-            return i;
+    for (i = 0; i < length - 1; i++){
+        if ((array[i] == 0x00) && (array[i + 1] == 0x0F)){
+            return i + 1;
         }
     }
 
     return -1;
+}
+
+static void extract_channel_data(uint8_t* data_frame, uint8_t* output){
+	/**
+	 * Function to do all the required bit-shifting to get the actual SBUS channel values out
+	*/
+	uint8_t i, byte_in_sbus = 1, bit_in_sbus = 0, bit_in_channel = 0, channel = 0;
+
+	for (i = 0; i < 176; i++){
+		if (data_frame[byte_in_sbus] && (1 << bit_in_sbus)){
+			output[channel] |= 1 << bit_in_channel;
+		}
+
+		bit_in_sbus++;
+		bit_in_channel++;
+
+		if (bit_in_sbus == 8){
+			bit_in_sbus = 0;
+			byte_in_sbus ++;
+		}
+
+		if (bit_in_channel == 11){
+			bit_in_channel = 0;
+			channel++;
+		}
+
+		// Only bothering with first 16 channels - 17 & 18 are encoded digitally, so need to be extracted differently
+		if (channel == 16){
+			return;
+		}
+	}
 }
 
 mp_obj_t read_data(mp_obj_t self_in){
@@ -96,12 +107,54 @@ mp_obj_t read_data(mp_obj_t self_in){
     */
     sbus_obj_t *self = MP_OBJ_TO_PTR(self_in);
 
-    uint8_t int_data = NULL;
-    nlr_buf_t cpu_state;
+    uint8_t *int_data = NULL;
+	uint8_t data_temp[32], data_frame[25], length_read, data_len = 0, index = -1;
+	uint8_t channels[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
+	ESP_ERROR_CHECK(uart_get_buffered_data_len(self->uart_number, &data_len));
 
+	// Making sure there's actually some data in the buffer
+	while (data_len < 25){
+		mp_hal_delay_ms(1);
+		ESP_ERROR_CHECK(uart_get_buffered_data_len(self->uart_number, &data_len));
+	}
+
+	data_len = 0;
+
+	// Reads until it finds start of a data frame AND 25 bytes after that
+	while ((index == -1) || (data_len - index < 25)){
+		// Reading new data
+		length_read = uart_read_bytes(self->uart_number, data_temp, 32, 1);
+
+		// Allocating more memory
+		int_data = (uint8_t*) realloc(int_data, data_len + length_read);
+
+		if (int_data == NULL){
+			mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("ENOMEM - out of memory"));
+		}
+
+		// Adding new data to the array
+		memcpy(int_data + data_len, data_temp, length_read);
+		data_len += length_read;
+
+		// Searching for start of data frame in array (only needs to be done if the start hasn't already been found)
+		if (index == -1){
+			index = find_sbus_frame_start(int_data, data_len);
+		}
+	}
+
+	// Clipping out data frame
+	memcpy(int_data + index, data_frame, 25);
+	free(int_data);
+
+	//Extracting raw channel data
+	extract_channel_data(data_frame, channels);
+
+	return mp_obj_new_list(16, channels);
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(sbus_read_data_obj, read_data);
+
+
 
 /**
  * Code here exposes the module functions above to micropython as an object
