@@ -5,6 +5,7 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
      * Checks all the given arguments, tests the micropython UART object, and handles initialization of the driver
      * Also initializes the micropython object which is passed back
     */
+	uart_port_t uart_num;
     uint8_t uart_pin, uart_id;
 
     // Checking arguments
@@ -18,22 +19,22 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
     if ((uart_id != 1) && (uart_id != 2)){
         mp_raise_msg(&mp_type_ValueError, MP_ERROR_TEXT("UART ID can only be 1 or 2"));
     }
-    if ((uart_pin < 0) || (uart_pin > 45)){
+    if (uart_pin > 45){
         mp_raise_msg(&mp_type_ValueError, MP_ERROR_TEXT("Only 45 pins on ESP32-S3: Please enter valid pin number"));
     }
 
     if (uart_id == 1){
-        uart_port_t uart_num = UART_NUM_1;
+        uart_num = UART_NUM_1;
     }
     else {
-        uart_port_t uart_num = UART_NUM_2;
+        uart_num = UART_NUM_2;
     }
 
 	// Configuring UART parameters
 	uart_config_t uart_config = {
 		.baud_rate = 100000,
 		.data_bits = UART_DATA_8_BITS,
-		.parity_type = UART_PARITY_DISABLE,
+		.parity = UART_PARITY_DISABLE,
 		.stop_bits = UART_STOP_BITS_2,
 	};
 	ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
@@ -77,7 +78,7 @@ static void extract_channel_data(uint8_t* data_frame, uint8_t* output){
 	uint8_t i, byte_in_sbus = 1, bit_in_sbus = 0, bit_in_channel = 0, channel = 0;
 
 	for (i = 0; i < 176; i++){
-		if (data_frame[byte_in_sbus] && (1 << bit_in_sbus)){
+		if (data_frame[byte_in_sbus] & (1 << bit_in_sbus)){
 			output[channel] |= 1 << bit_in_channel;
 		}
 
@@ -107,16 +108,16 @@ mp_obj_t read_data(mp_obj_t self_in){
     */
     sbus_obj_t *self = MP_OBJ_TO_PTR(self_in);
 
-    uint8_t *int_data = NULL;
-	uint8_t data_temp[32], data_frame[25], length_read, data_len = 0, index = -1;
+	uint8_t *int_data = NULL, data_temp[32], data_frame[25], length_read, data_len = 0, i;
 	uint8_t channels[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	int8_t index = -1;
 
-	ESP_ERROR_CHECK(uart_get_buffered_data_len(self->uart_number, &data_len));
+	ESP_ERROR_CHECK(uart_get_buffered_data_len(self->uart_number, (size_t*) &data_len));
 
 	// Making sure there's actually some data in the buffer
 	while (data_len < 25){
 		mp_hal_delay_ms(1);
-		ESP_ERROR_CHECK(uart_get_buffered_data_len(self->uart_number, &data_len));
+		ESP_ERROR_CHECK(uart_get_buffered_data_len(self->uart_number, (size_t*) &data_len));
 	}
 
 	data_len = 0;
@@ -150,7 +151,13 @@ mp_obj_t read_data(mp_obj_t self_in){
 	//Extracting raw channel data
 	extract_channel_data(data_frame, channels);
 
-	return mp_obj_new_list(16, channels);
+	// Creating a micropython array object to return
+	mp_obj_t retvals[16];
+	for (i = 0; i < 16; i++){
+		retvals[i] = mp_obj_new_int(channels[i]);
+	}
+
+	return mp_obj_new_list(16, retvals);
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(sbus_read_data_obj, read_data);
 

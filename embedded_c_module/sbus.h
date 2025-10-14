@@ -24,7 +24,7 @@ typedef struct {
 
 // Function definitions
 static int16_t find_sbus_frame_start(uint8_t *array, uint16_t length);
-static void extract_channel_data(uint8_t* data_frame, uint8_t* output)
+static void extract_channel_data(uint8_t* data_frame, uint8_t* output);
 
 extern const mp_obj_type_t sbus_type;
 
