@@ -111,6 +111,7 @@ mp_obj_t read_data(mp_obj_t self_in){
 	uint8_t *int_data = NULL, data_temp[32], data_frame[25], length_read, data_len = 0, i;
 	uint8_t channels[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 	int8_t index = -1;
+	uint32_t start_time = mp_hal_ticks_ms();
 
 	ESP_ERROR_CHECK(uart_get_buffered_data_len(self->uart_number, (size_t*) &data_len));
 
@@ -124,6 +125,10 @@ mp_obj_t read_data(mp_obj_t self_in){
 
 	// Reads until it finds start of a data frame AND 25 bytes after that
 	while ((index == -1) || (data_len - index < 25)){
+		if (mp_hal_ticks_ms() - start_time > 1000){
+			mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART read timed out: No data"));
+		}
+
 		// Reading new data
 		length_read = uart_read_bytes(self->uart_number, data_temp, 32, 1);
 
