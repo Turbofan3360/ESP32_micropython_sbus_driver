@@ -11,7 +11,6 @@
 #include "py/nlr.h"
 
 #include "driver/uart.h"
-#include "esp_err.h"
 
 // Constant definitions
 

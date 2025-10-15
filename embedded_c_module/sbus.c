@@ -38,18 +38,20 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
 		.parity = UART_PARITY_DISABLE,
 		.stop_bits = UART_STOP_BITS_2,
 	};
-	ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
-	ESP_ERROR_CHECK(uart_set_line_inverse(uart_num, UART_SIGNAL_RXD_INV));
 
 	if (nlr_push(&cpu_state) == 0){
-		ESP_ERROR_CHECK(uart_set_pin(uart_num, UART_PIN_NO_CHANGE, uart_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+		// Configuring UART
+		uart_param_config(uart_num, &uart_config);
+		uart_set_line_inverse(uart_num, UART_SIGNAL_RXD_INV);
+		uart_set_pin(uart_num, UART_PIN_NO_CHANGE, uart_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+		// Creating the ESP-IDF UART for RX only - 256 byte RXbuf, no TX
+    	uart_driver_install(uart_num, 256, 0, 0, NULL, 0);
+
+		nlr_pop();
 	}
 	else {
-		mp_raise_msg(&mp_type_ValueError, MP_ERROR_TEXT("UART object already initialised on this UART bus number"));
+		mp_raise_msg(&mp_type_ValueError, MP_ERROR_TEXT("UART object failed to initialize"));
 	}
-
-	// Creating the ESP-IDF UART for RX only - 256 byte RXbuf, no TX
-    ESP_ERROR_CHECK(uart_driver_install(uart_num, 256, 0, 0, NULL, 0));
 
     // Creating and allocating memory to the "self" instance of this module
     sbus_obj_t *self = m_new_obj(sbus_obj_t);
@@ -119,13 +121,29 @@ mp_obj_t read_data(mp_obj_t self_in){
 	uint8_t channels[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 	int8_t index = -1;
 	uint32_t start_time = mp_hal_ticks_ms();
+	nlr_buf_t cpu_state;
 
-	ESP_ERROR_CHECK(uart_get_buffered_data_len(self->uart_number, (size_t*) &data_len));
+	if (nlr_push(&cpu_state) == 0){
+		uart_get_buffered_data_len(self->uart_number, (size_t*) &data_len);
+
+		nlr_pop();
+	}
+	else {
+		mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART operation failed"));
+	}
 
 	// Making sure there's actually some data in the buffer
 	while (data_len < 25){
 		mp_hal_delay_ms(1);
-		ESP_ERROR_CHECK(uart_get_buffered_data_len(self->uart_number, (size_t*) &data_len));
+
+		if (nlr_push(&cpu_state) == 0){
+			uart_get_buffered_data_len(self->uart_number, (size_t*) &data_len);
+
+			nlr_pop();
+		}
+		else {
+		mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART operation failed"));
+		}
 
 		if (mp_hal_ticks_ms() - start_time > 1000){
 			mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART read timed out: No data"));
@@ -147,7 +165,7 @@ mp_obj_t read_data(mp_obj_t self_in){
 		int_data = (uint8_t*) realloc(int_data, data_len + length_read);
 
 		if (int_data == NULL){
-			mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("ENOMEM - out of memory"));
+			mp_raise_msg(&mp_type_MemoryError, MP_ERROR_TEXT("Could not allocate data array memory"));
 		}
 
 		// Adding new data to the array
