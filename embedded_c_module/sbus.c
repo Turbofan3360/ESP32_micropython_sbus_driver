@@ -7,6 +7,7 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
     */
 	uart_port_t uart_num;
     uint8_t uart_pin, uart_id;
+	nlr_buf_t cpu_state;
 
     // Checking arguments
     mp_arg_check_num(n_args, n_kw, 2, 2, false);
@@ -39,7 +40,13 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
 	};
 	ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
 	ESP_ERROR_CHECK(uart_set_line_inverse(uart_num, UART_SIGNAL_RXD_INV));
-	ESP_ERROR_CHECK(uart_set_pin(uart_num, UART_PIN_NO_CHANGE, uart_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+
+	if (nlr_push(&cpu_state) == 0){
+		ESP_ERROR_CHECK(uart_set_pin(uart_num, UART_PIN_NO_CHANGE, uart_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+	}
+	else {
+		mp_raise_msg(&mp_type_ValueError, MP_ERROR_TEXT("UART object already initialised on this UART bus number"));
+	}
 
 	// Creating the ESP-IDF UART for RX only - 256 byte RXbuf, no TX
     ESP_ERROR_CHECK(uart_driver_install(uart_num, 256, 0, 0, NULL, 0));
