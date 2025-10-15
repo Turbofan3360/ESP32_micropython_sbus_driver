@@ -35,7 +35,7 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
 	uart_config_t uart_config = {
 		.baud_rate = 100000,
 		.data_bits = UART_DATA_8_BITS,
-		.parity = UART_PARITY_DISABLE,
+		.parity = UART_PARITY_EVEN,
 		.stop_bits = UART_STOP_BITS_2,
 	};
 
@@ -80,7 +80,7 @@ static int16_t find_sbus_frame_start(uint8_t *array, uint16_t length){
     return -1;
 }
 
-static void extract_channel_data(uint8_t* data_frame, uint8_t* output){
+static void extract_channel_data(uint8_t* data_frame, uint16_t* output){
 	/**
 	 * Function to do all the required bit-shifting to get the actual SBUS channel values out
 	*/
@@ -118,39 +118,10 @@ mp_obj_t read_data(mp_obj_t self_in){
     sbus_obj_t *self = MP_OBJ_TO_PTR(self_in);
 
 	uint8_t *int_data = NULL, data_temp[32], data_frame[25], length_read, data_len = 0, i;
-	uint8_t channels[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	uint16_t channels[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 	int8_t index = -1;
 	uint32_t start_time = mp_hal_ticks_ms();
 	nlr_buf_t cpu_state;
-
-	if (nlr_push(&cpu_state) == 0){
-		uart_get_buffered_data_len(self->uart_number, (size_t*) &data_len);
-
-		nlr_pop();
-	}
-	else {
-		mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART operation failed"));
-	}
-
-	// Making sure there's actually some data in the buffer
-	while (data_len < 25){
-		mp_hal_delay_ms(1);
-
-		if (nlr_push(&cpu_state) == 0){
-			uart_get_buffered_data_len(self->uart_number, (size_t*) &data_len);
-
-			nlr_pop();
-		}
-		else {
-		mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART operation failed"));
-		}
-
-		if (mp_hal_ticks_ms() - start_time > 1000){
-			mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART read timed out: No data"));
-		}
-	}
-
-	data_len = 0;
 
 	// Reads until it finds start of a data frame AND 25 bytes after that
 	while ((index == -1) || (data_len - index < 25)){
@@ -164,7 +135,7 @@ mp_obj_t read_data(mp_obj_t self_in){
 		// Allocating more memory
 		int_data = (uint8_t*) realloc(int_data, data_len + length_read);
 
-		if (int_data == NULL){
+		if ((int_data == NULL) && (data_len != 0)){
 			mp_raise_msg(&mp_type_MemoryError, MP_ERROR_TEXT("Could not allocate data array memory"));
 		}
 
@@ -179,7 +150,7 @@ mp_obj_t read_data(mp_obj_t self_in){
 	}
 
 	// Clipping out data frame
-	memcpy(int_data + index, data_frame, 25);
+	memcpy(data_frame, int_data + index, 25);
 	free(int_data);
 
 	//Extracting raw channel data
