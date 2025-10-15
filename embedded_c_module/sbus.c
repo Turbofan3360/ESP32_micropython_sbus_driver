@@ -119,6 +119,10 @@ mp_obj_t read_data(mp_obj_t self_in){
 	while (data_len < 25){
 		mp_hal_delay_ms(1);
 		ESP_ERROR_CHECK(uart_get_buffered_data_len(self->uart_number, (size_t*) &data_len));
+
+		if (mp_hal_ticks_ms() - start_time > 1000){
+			mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART read timed out: No data"));
+		}
 	}
 
 	data_len = 0;
