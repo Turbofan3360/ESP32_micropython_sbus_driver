@@ -63,7 +63,7 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
     return MP_OBJ_FROM_PTR(self);
 }
 
-static int16_t find_sbus_frame_start(uint8_t *array, uint16_t length){
+static int8_t find_sbus_frame_start(const uint8_t* array, uint8_t length){
     /**
      * Utility to find the index of the start of the SBUS data frame
      * Basically, a C implementation of .find() in python
@@ -71,21 +71,22 @@ static int16_t find_sbus_frame_start(uint8_t *array, uint16_t length){
     */
     uint16_t i;
 
-    for (i = 0; i < length - 1; i++){
-        if ((array[i] == 0x00) && (array[i + 1] == 0x0F)){
-            return i + 1;
+    for (i = 0; i < length - 25; i++){
+        if ((array[i] == 0x00) && (array[i + 24] == 0x0F)){
+            return i;
         }
     }
 
     return -1;
 }
 
-static void extract_channel_data(uint8_t* data_frame, uint16_t* output){
+static void extract_channel_data(const uint8_t* data_frame, uint16_t* output){
 	/**
 	 * Function to do all the required bit-shifting to get the actual SBUS channel values out
 	*/
 	uint8_t i, byte_in_sbus = 1, bit_in_sbus = 0, bit_in_channel = 0, channel = 0;
 
+	// Only bothering with first 16 channels - 17 & 18 are encoded digitally, so need to be extracted differently
 	for (i = 0; i < 176; i++){
 		if (data_frame[byte_in_sbus] & (1 << bit_in_sbus)){
 			output[channel] |= 1 << bit_in_channel;
@@ -96,26 +97,21 @@ static void extract_channel_data(uint8_t* data_frame, uint16_t* output){
 
 		if (bit_in_sbus == 8){
 			bit_in_sbus = 0;
-			byte_in_sbus ++;
+			byte_in_sbus++;
 		}
 
 		if (bit_in_channel == 11){
 			bit_in_channel = 0;
 			channel++;
 		}
-
-		// Only bothering with first 16 channels - 17 & 18 are encoded digitally, so need to be extracted differently
-		if (channel == 16){
-			return;
-		}
 	}
 }
 
 mp_obj_t read_data(mp_obj_t self_in){
-    /**
-     * Function to read and return a SBUS data frame, broken down by channel
-    */
-    sbus_obj_t *self = MP_OBJ_TO_PTR(self_in);
+	/**
+	 * Function to read and return a SBUS data frame, broken down by channel
+	*/
+	sbus_obj_t *self = MP_OBJ_TO_PTR(self_in);
 
 	uint8_t *int_data = NULL, data_temp[32], data_frame[25], length_read, data_len = 0, i;
 	uint16_t channels[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -123,9 +119,11 @@ mp_obj_t read_data(mp_obj_t self_in){
 	uint32_t start_time = mp_hal_ticks_ms();
 	nlr_buf_t cpu_state;
 
+	uart_flush_input(self->uart_number);
+
 	// Reads until it finds start of a data frame AND 25 bytes after that
 	while ((index == -1) || (data_len - index < 25)){
-		if (mp_hal_ticks_ms() - start_time > 1000){
+		if (mp_hal_ticks_ms() - start_time > SBUS_READ_TIMEOUT_MS){
 			mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART read timed out: No data"));
 		}
 
