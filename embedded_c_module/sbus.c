@@ -72,7 +72,7 @@ static int8_t find_sbus_frame_start(const uint8_t* array, uint8_t length){
     uint16_t i;
 
     for (i = 0; i < length - 25; i++){
-        if ((array[i] == 0x00) && (array[i + 24] == 0x0F)){
+        if ((array[i] == 0x0F) && (array[i + 24] == 0x00)){
             return i;
         }
     }
@@ -117,7 +117,6 @@ mp_obj_t read_data(mp_obj_t self_in){
 	uint16_t channels[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 	int8_t index = -1;
 	uint32_t start_time = mp_hal_ticks_ms();
-	nlr_buf_t cpu_state;
 
 	uart_flush_input(self->uart_number);
 
@@ -142,7 +141,7 @@ mp_obj_t read_data(mp_obj_t self_in){
 		data_len += length_read;
 
 		// Searching for start of data frame in array (only needs to be done if the start hasn't already been found)
-		if (index == -1){
+		if ((index == -1) && (data_len >= 25)){
 			index = find_sbus_frame_start(int_data, data_len);
 		}
 	}
