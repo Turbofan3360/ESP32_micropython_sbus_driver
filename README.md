@@ -35,6 +35,43 @@ if __name__ == "__main__":
             		print(channelvalues.get_duty_cycles(data))
 ```
 
+### Embedded C Module: ###
+
+For higher performance, in the embedded_c_module folder you will find the .c, .h and .cmake files to compile the SBUS driver into micropython firmware - there is a guide to compiling this below. 
+
+This returns the raw values for each channel.
+
+Example usage:
+```python3
+import sbus
+
+pin_number = 2
+port_number = 2
+
+# NOTE: This embedded module requires the UART pin number and port number to be passed in
+radio = sbus.SBUS(pin_number, port_number)
+
+print(radio.read_data())
+```
+
+### Compiling the module into firmware: ###
+
+To do this, you will need:
+ - ESP-IDF cloned from github
+ - Micropython cloned from github
+
+1. Enter your esp-idf directory, and run ./install.sh (only needs to be run the first time)
+2. Enter your esp-idf directory and run . ./export.sh (needs to be run every new terminal session)
+3. Download the files from embedded_c_module and place them in a directory of your choosing
+4. Enter your directory ~/micropython/ports/esp32 (can be replaced with whichever micropython board you are using)
+5. Run the make command, specifying USER_C_MODULES=/path/to/sbus/embedded_c_module (replace with your file path)
+
+For me, with an ESP32-S3 that has octal SPIRAM, the full make command is:
+```
+make BOARD=ESP32_GENERIC_S3 BOARD_VARIANT=SPIRAM_OCT USER_C_MODULES=/path/to/sbus/embedded_c_module
+```
+
+
 ### References: ###
  - <https://github.com/Sokrates80/sbus_driver_micropython/tree/master>
  - <https://github.com/btrinite/SBUS-for-esp32>
