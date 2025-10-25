@@ -17,7 +17,7 @@ The ChannelValues class is fed the data from SbusReceive, and outputs the sservo
 
 *Note: I haven't implemented the 17th/18th channels in my SBUS code, as I my receiver doesn't utilise those channels. They are digital channels, and so need to be decoded differently to the others.*
 
-I also integrated the SBUS code with a few PWM channels from the ESP32 as well - so you can use your ESP32 to drive servos (I used SG90 servos) based on the channel data received over SBUS.
+I also integrated the Micropython SBUS code with a few PWM channels from the ESP32 as well - so you can use your ESP32 to drive servos (I used SG90 servos) based on the channel data received over SBUS.
 
 ### Implementation: ###
 
@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
 For higher performance, in the embedded_c_module folder you will find the .c, .h and .cmake files to compile the SBUS driver into micropython firmware - there is a guide to compiling this below. 
 
-This returns the raw values for each channel.
+This returns 0->100% values for each channel - if it returns values outside of this, the SBUS_MIN_CH_VALUE and SBUS_MAX_CH_VALUE definitions in the sbus.h header may need tweaking.
 
 Example usage:
 ```python3
