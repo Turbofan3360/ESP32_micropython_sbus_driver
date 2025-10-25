@@ -63,7 +63,7 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
     return MP_OBJ_FROM_PTR(self);
 }
 
-static int8_t find_sbus_frame_start(const uint8_t* array, uint8_t length){
+static int16_t find_sbus_frame_start(const uint8_t* array, uint8_t length){
     /**
      * Utility to find the index of the start of the SBUS data frame
      * Basically, a C implementation of .find() in python
@@ -115,7 +115,7 @@ mp_obj_t read_data(mp_obj_t self_in){
 
 	uint8_t *int_data = NULL, data_temp[32], data_frame[25], length_read, data_len = 0, i;
 	uint16_t channels[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-	int8_t index = -1;
+	int16_t index = -1;
 	uint32_t start_time = mp_hal_ticks_ms();
 
 	uart_flush_input(self->uart_number);
@@ -150,13 +150,28 @@ mp_obj_t read_data(mp_obj_t self_in){
 	memcpy(data_frame, int_data + index, 25);
 	free(int_data);
 
-	//Extracting raw channel data
+	// Extracting raw channel data
 	extract_channel_data(data_frame, channels);
 
-	// Creating a micropython array object to return
+	// Scaling the raw channel values to a 0->100 range
+	// Then creating a micropython array object with these values to return
 	mp_obj_t retvals[16];
+	float sbusvalue_to_percent = (SBUS_MAX_CH_VALUE - SBUS_MIN_CH_VALUE)/100.0f;
+	uint16_t raw_channelvalue;
+
 	for (i = 0; i < 16; i++){
-		retvals[i] = mp_obj_new_int(channels[i]);
+		if (channels[i] < SBUS_MIN_CH_VALUE){
+			raw_channelvalue = SBUS_MIN_CH_VALUE;
+		}
+		else if (channels[i] > SBUS_MAX_CH_VALUE){
+			raw_channelvalue = SBUS_MAX_CH_VALUE;
+		}
+		else {
+			raw_channelvalue = channels[i] - SBUS_MIN_CH_VALUE;
+		}
+		raw_channelvalue = (uint16_t) ((raw_channelvalue/sbusvalue_to_percent) + 0.5f);
+
+		retvals[i] = mp_obj_new_int(raw_channelvalue);
 	}
 
 	return mp_obj_new_list(16, retvals);
