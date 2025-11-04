@@ -8,7 +8,6 @@
 #include "py/obj.h"
 #include "py/objstr.h"
 #include "py/mphal.h"
-#include "py/nlr.h"
 
 #include "driver/uart.h"
 

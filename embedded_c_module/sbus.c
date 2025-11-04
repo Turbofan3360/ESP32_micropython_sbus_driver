@@ -7,7 +7,7 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
     */
 	uart_port_t uart_num;
     uint8_t uart_pin, uart_id;
-	nlr_buf_t cpu_state;
+	esp_err_t err;
 
     // Checking arguments
     mp_arg_check_num(n_args, n_kw, 2, 2, false);
@@ -31,6 +31,17 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
         uart_num = UART_NUM_2;
     }
 
+	// Cleaning up old UART driver if it is installed
+	if (uart_is_driver_installed(uart_num)){
+    	err = uart_driver_delete(uart_num);
+
+		if (err != ESP_OK) {
+    		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver cleanup failed: %d"), err);
+		}
+
+		mp_hal_delay_ms(10);
+	}
+
 	// Configuring UART parameters
 	uart_config_t uart_config = {
 		.baud_rate = 100000,
@@ -39,18 +50,26 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
 		.stop_bits = UART_STOP_BITS_2,
 	};
 
-	if (nlr_push(&cpu_state) == 0){
-		// Configuring UART
-		uart_param_config(uart_num, &uart_config);
-		uart_set_line_inverse(uart_num, UART_SIGNAL_RXD_INV);
-		uart_set_pin(uart_num, UART_PIN_NO_CHANGE, uart_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-		// Creating the ESP-IDF UART for RX only - 256 byte RXbuf, no TX
-    	uart_driver_install(uart_num, 256, 0, 0, NULL, 0);
-
-		nlr_pop();
+	// Configuring UART
+	err = uart_param_config(uart_num, &uart_config);
+	if (err != ESP_OK) {
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver config failed: %d"), err);
 	}
-	else {
-		mp_raise_msg(&mp_type_ValueError, MP_ERROR_TEXT("UART object failed to initialize"));
+
+	err = uart_set_line_inverse(uart_num, UART_SIGNAL_RXD_INV);
+	if (err != ESP_OK) {
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver config (line inverse) failed: %d"), err);
+	}
+
+	err = uart_set_pin(uart_num, UART_PIN_NO_CHANGE, uart_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+	if (err != ESP_OK) {
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver pin config failed: %d"), err);
+	}
+
+	// Creating the ESP-IDF UART for RX only - 256 byte RXbuf, no TX
+   	err = uart_driver_install(uart_num, 256, 0, 0, NULL, 0);
+	if (err != ESP_OK) {
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver install failed: %d"), err);
 	}
 
     // Creating and allocating memory to the "self" instance of this module
@@ -113,7 +132,8 @@ mp_obj_t read_data(mp_obj_t self_in){
 	*/
 	sbus_obj_t *self = MP_OBJ_TO_PTR(self_in);
 
-	uint8_t *int_data = NULL, data_temp[32], data_frame[25], length_read, data_len = 0, i;
+	uint8_t *int_data = NULL, data_temp[32], data_frame[25], data_len = 0, i;
+	int8_t length_read;
 	uint16_t channels[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 	int16_t index = -1;
 	uint32_t start_time = mp_hal_ticks_ms();
@@ -128,6 +148,10 @@ mp_obj_t read_data(mp_obj_t self_in){
 
 		// Reading new data
 		length_read = uart_read_bytes(self->uart_number, data_temp, 32, 1);
+
+		if (length_read < 0){
+			continue;
+		}
 
 		// Allocating more memory
 		int_data = (uint8_t*) realloc(int_data, data_len + length_read);
