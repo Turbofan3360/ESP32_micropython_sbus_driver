@@ -10,9 +10,11 @@
 #include "py/mphal.h"
 
 #include "driver/uart.h"
+#include "freertos/timers.h"
+#include "esp_timer.h"
 
 // Constant definitions
-#define SBUS_READ_TIMEOUT_MS 1000
+#define SBUS_READ_TIMEOUT_µS 1000000
 #define SBUS_MIN_CH_VALUE 200
 #define SBUS_MAX_CH_VALUE 1800
 

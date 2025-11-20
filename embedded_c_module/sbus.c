@@ -36,10 +36,10 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
     	err = uart_driver_delete(uart_num);
 
 		if (err != ESP_OK) {
-    		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver cleanup failed: %d"), err);
+    		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver cleanup failed: %s"), esp_err_to_name(err));
 		}
 
-		mp_hal_delay_ms(10);
+		vTaskDelay(pdMS_TO_TICKS(10));
 	}
 
 	// Configuring UART parameters
@@ -53,23 +53,24 @@ mp_obj_t sbus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, co
 	// Configuring UART
 	err = uart_param_config(uart_num, &uart_config);
 	if (err != ESP_OK) {
-		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver config failed: %d"), err);
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver config failed: %s"), esp_err_to_name(err));
 	}
 
 	err = uart_set_line_inverse(uart_num, UART_SIGNAL_RXD_INV);
+
 	if (err != ESP_OK) {
-		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver config (line inverse) failed: %d"), err);
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver config (line inverse) failed: %s"), esp_err_to_name(err));
 	}
 
 	err = uart_set_pin(uart_num, UART_PIN_NO_CHANGE, uart_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
 	if (err != ESP_OK) {
-		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver pin config failed: %d"), err);
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver pin config failed: %s"), esp_err_to_name(err));
 	}
 
 	// Creating the ESP-IDF UART for RX only - 256 byte RXbuf, no TX
    	err = uart_driver_install(uart_num, 256, 0, 0, NULL, 0);
 	if (err != ESP_OK) {
-		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver install failed: %d"), err);
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART driver install failed: %s"), esp_err_to_name(err));
 	}
 
     // Creating and allocating memory to the "self" instance of this module
@@ -136,13 +137,13 @@ mp_obj_t read_data(mp_obj_t self_in){
 	int8_t length_read;
 	uint16_t channels[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 	int16_t index = -1;
-	uint32_t start_time = mp_hal_ticks_ms();
+	uint64_t start_time = esp_timer_get_time();
 
 	uart_flush_input(self->uart_number);
 
 	// Reads until it finds start of a data frame AND 25 bytes after that
 	while ((index == -1) || (data_len - index < 25)){
-		if (mp_hal_ticks_ms() - start_time > SBUS_READ_TIMEOUT_MS){
+		if (esp_timer_get_time() - start_time > SBUS_READ_TIMEOUT_µS){
 			mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("UART read timed out: No data"));
 		}
 
